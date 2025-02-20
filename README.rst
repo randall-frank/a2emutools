@@ -25,7 +25,28 @@ Apple 2 Emulator Disk Tools
 
 Overview
 --------
-`a2emutools` is TODO
+The `a2emutools` module and command line application provides the ability
+to move files between different Apple II emulator disk file formats and
+Apple II filesystems.  It can copy a file from one container to another
+as well to the local filesystem.  Currently supported filesystems include:
+
+    * Dos 3.3
+    * ProDOS 8
+    * Native filesystem
+
+Supported container formats include:
+
+    * dsk - Raw Dos 3.3 sector order, no header
+    * po,hdv - Raw ProDOS 8 block order, no header
+    * 2mg - Dos 3.3 and ProDOS 8 block order, declarative header
+
+The API and the command line tool allow for listing of directories with
+file details, copying files, deleting files and creating subdirectories
+(ProDOS).
+
+When reading from and writing to the local filesystem, the tool can
+translate text and Applesoft basic files between native and Apple II
+encodings.
 
 Documentation and Issues
 ------------------------

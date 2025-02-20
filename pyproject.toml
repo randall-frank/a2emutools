@@ -49,10 +49,6 @@ doc = [
     "requests>=2.28.2",
 ]
 
-[tool.black]
-line-length = 100
-src_paths = ["src", "doc"]
-
 [tool.codespell]
 ignore-words-list = "a2e, dsk, 2mg, a2emutools"
 quiet-level = 3

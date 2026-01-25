@@ -1,7 +1,21 @@
 from datetime import datetime
+from enum import IntEnum
+import os.path
+import stat
 from typing import List, Optional, Union
 
 from a2emutools.container_formats import DiskImage
+
+
+class Access(IntEnum):
+    # Notion of entities having access restrictions
+    DELETE: int = 1 << 7
+    RENAME: int = 1 << 6
+    CHANGED: int = 1 << 5
+    WRITE: int = 1 << 1
+    READ: int = 1 << 0
+    ALL: int = DELETE | RENAME | WRITE | READ
+    CORE: int = DELETE | RENAME
 
 
 class DirObj:
@@ -24,25 +38,17 @@ class DirObj:
 
     @property
     def path(self) -> str:
+        s = f"/{self.name}"
         p = self.parent
-        s = ""
         while p:
+            if not p.name:
+                return s
             s = f"/{p.name}{s}"
         return s
 
     @property
     def name(self) -> str:
         return self._name
-
-    @property
-    def fullpath(self) -> str:
-        s = self.path
-        if s:
-            s = f"{self.path}/{self.name}"
-        else:
-            s = self.name
-        s = s.replace("//", "/")
-        return s
 
     def create_file(self, name: str, filetype: str) -> Optional["FileObj"]:
         return None
@@ -51,10 +57,18 @@ class DirObj:
         raise RuntimeError("Subdirectories are not supported on this filesystem.")
 
     def children(self) -> List[Union["DirObj", "FileObj"]]:
-        return []
+        children: List[Union["DirObj", "FileObj"]] = []
+        path = self._fs._local_pathname(self.path)
+        for name in os.listdir(path):
+            fullname = os.path.join(path, name)
+            if os.path.isfile(fullname):
+                children.append(FileObj(self._fs, name, self))
+            elif os.path.isdir(fullname):
+                children.append(DirObj(self._fs, name, self))
+        return children
 
     def delete(self):
-        pass
+        print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
 
 
 class FileObj:
@@ -67,8 +81,24 @@ class FileObj:
         self._file_type: str = ""
         self._file_size: int = 0
         self._aux_bits: int = 0
-        self._access: int = 0
+        self._access: Access = Access.ALL
         self._data: bytearray = bytearray()
+        self._synced: bool = False
+
+    def _read_info(self):
+        path = self._fs._local_pathname(self.path)
+        if os.path.isfile(path):
+            s = os.stat(path)
+            self._file_size = s.st_size
+            self._file_type = os.path.splitext(path)[1][1:].upper()
+            self._mod_time = datetime.fromtimestamp(s.st_mtime)
+            self._create_time = datetime.fromtimestamp(s.st_ctime)
+            a = Access.CORE
+            if stat.S_IRUSR & s.st_mode:
+                a |= Access.READ
+            if stat.S_IWUSR & s.st_mode:
+                a |= Access.WRITE
+            self._access = a
 
     @property
     def file_system(self) -> "FileSystem":
@@ -80,9 +110,11 @@ class FileObj:
 
     @property
     def path(self) -> str:
+        s = f"/{self.name}"
         p = self.parent
-        s = ""
         while p:
+            if not p.name:
+                return s
             s = f"/{p.name}{s}"
         return s
 
@@ -103,7 +135,7 @@ class FileObj:
         return self._aux_bits
 
     @property
-    def access(self) -> int:
+    def access(self) -> Access:
         return self._access
 
     @property
@@ -124,20 +156,30 @@ class FileObj:
 
     @property
     def data(self) -> bytearray:
+        if not self._synced:
+            self._read()
         return self._data
 
     @data.setter
     def data(self, data: bytearray) -> None:
         self._data = data
+        self._synced = False
 
     def _read(self) -> None:
         self.data = bytearray()
+        path = self._fs._local_pathname(self.path)
+        if os.path.isfile(path):
+            with open(path, "rb") as fp:
+                tmp = fp.read()
+            self._data = bytearray(tmp)
+        self._synced = True
 
     def _write(self) -> None:
-        pass
+        print(f"Writing to: {self._fs._local_pathname(self.path)} unimplemented.")
+        self._synced = True
 
     def delete(self) -> None:
-        pass
+        print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
 
 
 class FileSystem:
@@ -158,7 +200,7 @@ class FileSystem:
             True if the DiskImage object supports this FileSystem
 
         """
-        return False
+        return os.path.isdir(container.container_name)
 
     def __init__(self, container: "DiskImage") -> None:
         self._type: str = "Local Filesystem"
@@ -174,7 +216,42 @@ class FileSystem:
 
     @property
     def root(self) -> "DirObj":
-        return DirObj(self, name=self.container.pathname)
+        return DirObj(self)
+
+    def find_entity(self, name: str) -> Union["DirObj", "FileObj", None]:
+        """
+        Walk the files and directories of the filesystem and return the DirObj, FileObj
+        instances corresponding to the specified name.   If the name cannot be found,
+        the method returns None.
+
+        Parameters
+        ----------
+        name: str
+            The pathname of the object to find.  The '/' character serves as the name deliminator.
+
+        Returns
+        -------
+        The object found or None
+
+        """
+        cur_obj = self.root
+        stack = name.split("/")
+        while len(stack):
+            cur_name = stack.pop(0)
+            if not cur_name:
+                continue
+            children = cur_obj.children()
+            found = False
+            for child in children:
+                if child.name == cur_name:
+                    found = True
+                    cur_obj = child  # type: ignore
+                    if len(stack) == 0:
+                        return cur_obj
+                    break
+            if not found:
+                return None
+        return None
 
     def flush(self) -> None:
         pass
@@ -183,7 +260,18 @@ class FileSystem:
         pass
 
     def info(self) -> str:
+        """
+        This method returns the string that is displayed by the 'info' cli command.
+        It should report on the nature of the container: size, type, VTOC, etc
+
+        Returns
+        -------
+        str
+            The output to be displayed.
+        """
         s = f"{self.type}\n"
-        s += f"Container={self.container.container_name}\n"
-        s += f"Path={self.root.fullpath}"
+        s += f"Container={self.container.container_name}"
         return s
+
+    def _local_pathname(self, pathname: str) -> str:
+        return os.path.join(self._container.container_name, pathname)

@@ -4,16 +4,31 @@ from typing import List, Optional, Union
 from a2emutools.container_formats import DiskImage
 from a2emutools.filesystem import DirObj, FileObj, FileSystem
 
+DOS33FiletypesMap = dict(
+    TXT=b"x00",
+    INT=b"x01",
+    BAS=b"x02",
+    BIN=b"x04",
+    S=b"x08",
+    R=b"x10",
+    A=b"x20",
+    B=b"x40",
+)
+
 
 class DOS33FileObj(FileObj):
     def __init__(self, file_system: "FileSystem", name: str, parent: "DirObj") -> None:
         super().__init__(file_system, name, parent)
 
+    def _read_info(self):
+        pass
+
     def _read(self) -> None:
         self.data = bytearray()
+        self._synced = True
 
     def _write(self) -> None:
-        pass
+        self._synced = True
 
     def delete(self) -> None:
         pass
@@ -90,6 +105,16 @@ class DOS33FileSystem(FileSystem):
 
     def info(self) -> str:
         s = f"{self.type}\n"
-        s += f"Container={self.container.container_name}\n"
-        s += f"Path={self.root.fullpath}"
+        s += f"Container={self.container.container_name}"
         return s
+
+    def ext_to_filetype(self, ext: str) -> bytes:
+        return DOS33FiletypesMap.get(ext, DOS33FiletypesMap["BIN"])
+
+    def filetype_to_ext(self, ftype: bytes) -> str:
+        # upper bit is the "locked" flag
+        b = ftype[0] & 127
+        for key, value in DOS33FiletypesMap.items():
+            if value == b:
+                return key
+        return "BIN"

@@ -9,7 +9,6 @@ class ContainerFormat(IntEnum):
     # Container format enums
     RAW: int = 0  # .do .dsk, .po, .hdv
     FILE_2MG: int = 1  # .2mg
-    LOCAL_FS: int = 2  # the local file system
 
 
 class SectorOrder(IntEnum):
@@ -37,7 +36,6 @@ class FileSystemType(IntEnum):
 
     DOS33: int = 0  # DOS3.3 filesystem
     PRODOS: int = 1  # ProDOS filesystem
-    NATIVE: int = 2  # Used by ContainerFormat.LOCAL_FS
     UNKNOWN: int = 3  # Unable to determine the filesystem
 
 
@@ -85,7 +83,7 @@ class DiskImage:
         (0x07, 256),  # sector f
     )
 
-    def __init__(self, filename: str, pathname: str = "") -> None:
+    def __init__(self, filename: str) -> None:
         # This is based on the 2MG header, we use the same fields for
         # all the other containers
         self._2mgheader_size: int = 64
@@ -94,7 +92,6 @@ class DiskImage:
         # General features
         self._volume_number: int = 0
         self._file_locked: bool = False
-        self._pathname: str = pathname
         self._container_name: str = filename
 
         # what type of container is open
@@ -105,17 +102,8 @@ class DiskImage:
         self._file_data: bytearray = bytearray()
         self._filesystem: FileSystemType = FileSystemType.DOS33
 
-        # Two options:
-        # 1) name of container
-        # 2) directory name (for the local filesystem rooted at filename)
-        if os.path.isdir(filename):
-            #
-            self._container_format = ContainerFormat.LOCAL_FS
-            self._sector_order = SectorOrder.NONE
-            self._filesystem = FileSystemType.NATIVE
-        else:
-            # Read the container
-            self.read_container(filename)
+        # Read the container
+        self.read_container(filename)
 
         from a2emutools import known_filesystems
 
@@ -133,10 +121,6 @@ class DiskImage:
     @data.setter
     def data(self, data: bytearray) -> None:
         self._file_data = data
-
-    @property
-    def pathname(self) -> str:
-        return self._pathname
 
     @property
     def container_name(self) -> str:
@@ -365,7 +349,6 @@ class DiskImage:
 
     def _guess_data_format(self) -> None:
         from a2emutools.dos33 import DOS33FileSystem
-        from a2emutools.filesystem import FileSystem
         from a2emutools.prodos import ProDOSFileSystem
 
         # we have a container and the sector order (for low level sector/block access) is
@@ -375,8 +358,6 @@ class DiskImage:
             self._filesystem = FileSystemType.PRODOS
         elif DOS33FileSystem.is_format(self):
             self._filesystem = FileSystemType.DOS33
-        elif FileSystem.is_format(self):
-            self._filesystem = FileSystemType.NATIVE
         else:
             self._filesystem = FileSystemType.UNKNOWN
 
@@ -398,8 +379,6 @@ class DiskImage:
             self._file_locked = False
 
     def save_container(self, filename: str) -> None:
-        if self._container_format == ContainerFormat.LOCAL_FS:
-            raise RuntimeError("The local filesystem does not support container saving.")
         with open(filename, "wb") as f:
             # for non-2mg containers build_header returns an empty bytearray
             header = self._build_header()
@@ -491,34 +470,22 @@ container_extensions = {
 
 
 def create_image(name: str) -> "DiskImage":
-    container_name, pathname, _ = parse_pathname(name)
-    image = DiskImage(container_name, pathname=pathname)
+    container_name, _ = parse_pathname(name)
+    image = DiskImage(container_name)
     return image
 
 
-def parse_pathname(name: str) -> Tuple[str, str, "ContainerFormat"]:
+def parse_pathname(name: str) -> Tuple[str, "ContainerFormat"]:
     """
-    Given an encoded string, return the name of the local container
-    (or directory) and the path inside the container.  It will also
-    return the container format: raw, 2mg, native.
-
-    If the ContainerFormat is NATIVE, then the first string in the
-    tuple will be the directory name that will serve as the container
-    root.
-
-    Pathname specification:
-
-    Native container/filesystem
-    /foo/bar or C:/foo/bar -> filename 'bar' in directory container 'foo'
-
-    If a directory name, then the file name is ''.
+    Given astring, return the name of the local container and
+    the container format: raw, 2mg, etc.
 
     Container files:
     /foo/file{.dsk,.po,.do,.2mg,.hdv}:/path
     C:/foo/file{.dsk,.po,.do,.2mg,.hdv}:/path
 
     ext is the tuple: ('.dsk', '.po', '.do', '.hdv', '.2mg')
-    Detect using: endswith '{ext' or contains:  '{ext}:/'
+    Detect using: endswith '{ext}'
 
     Parameters
     ----------
@@ -527,9 +494,8 @@ def parse_pathname(name: str) -> Tuple[str, str, "ContainerFormat"]:
 
     Returns
     -------
-    (str, str, ContainerFormat)
-        The first string is the path to the container. The second is
-        the filename/path to the object in the container.  The third
+    (str, ContainerFormat)
+        The first string is the path to the container. The second
         value is the type of container.
 
     Raises
@@ -539,40 +505,9 @@ def parse_pathname(name: str) -> Tuple[str, str, "ContainerFormat"]:
         exist.
 
     """
-    # The fallback is a non-existent file in the LOCAL_FS
-    container_name = os.path.dirname(name)
-    pathname = os.path.basename(name)
-    container_type = ContainerFormat.LOCAL_FS
+    # Check container extension mapping
+    _, ext = os.path.splitext(name)
+    if ext in container_extensions:
+        return name, container_extensions[ext]
 
-    # If the whole thing is a physical directory, that is the simplest case
-    # Use the local filesystem rooted at the directory.
-    if os.path.isdir(name):
-        return name, "", ContainerFormat.LOCAL_FS
-
-    # It could just be a raw container file, no path in the container
-    if os.path.isfile(name):
-        _, ext = os.path.splitext(name)
-        if ext in container_extensions:
-            return name, "", container_extensions[ext]
-
-    # split into "container" and "path", but container must exist
-    # path need not.
-    for ext in container_extensions.keys():
-        # Look for 'foo.{ext}:/'
-        tag = f"{ext}:/"
-        idx = name.find(tag)
-        if idx > 0:
-            pathname = name[idx + len(tag) :]
-            container_name = name[: idx + len(tag) - 2]
-            container_type = container_extensions[ext]
-            # the container file must exist (and be a file)
-            if os.path.isfile(container_name):
-                return container_name, pathname, container_type
-
-    # Local filesystem fallback case: the directory still must exist, but the
-    # pathname can be set, but non-existent.
-    if not os.path.isdir(container_name):
-        raise RuntimeError(
-            f"A directory named {container_name} could not be found (local filesystem)"
-        )
-    return container_name, pathname, container_type
+    raise RuntimeError(f"Unknown container format {ext}.")

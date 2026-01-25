@@ -5,16 +5,145 @@ from typing import List, Optional, Tuple, Union
 from a2emutools.container_formats import DiskImage
 from a2emutools.filesystem import DirObj, FileObj, FileSystem
 
+# ref:  https://www.kreativekorp.com/miscpages/a2info/filetypes.shtml
+ProDOSFiletypesMap = dict(
+    UNK=b"x00",
+    BAD=b"x01",
+    PCD=b"x02",
+    PTX=b"x03",
+    TXT=b"x04",
+    PDA=b"x05",
+    BIN=b"x06",
+    FNT=b"x07",
+    BA3=b"x09",
+    DA3=b"x0A",
+    WPF=b"x0B",
+    SOS=b"x0C",
+    DIR=b"x0F",
+    RPD=b"x10",
+    RPI=b"x11",
+    AFD=b"x12",
+    AFM=b"x13",
+    AFR=b"x14",
+    SCL=b"x15",
+    PFS=b"x16",
+    ADB=b"x19",
+    AWP=b"x1A",
+    ASP=b"x1B",
+    TDM=b"x20",
+    IPS=b"x21",
+    UPV=b"x22",
+    # 3SD=b'x29',
+    # 8SC=b'x2A',
+    # 8OB=b'x2B',
+    # 8IC=b'x2C',
+    # 8LD=b'x2D',
+    P8C=b"x2E",
+    OCR=b"x41",
+    FTD=b"x42",
+    GWP=b"x50",
+    GSS=b"x51",
+    GDB=b"x52",
+    DRW=b"x53",
+    GDP=b"x54",
+    HMD=b"x55",
+    EDU=b"x56",
+    STN=b"x57",
+    HLP=b"x58",
+    COM=b"x59",
+    CFG=b"x5A",
+    ANM=b"x5B",
+    MUM=b"x5C",
+    ENT=b"x5D",
+    DVU=b"x5E",
+    PRE=b"x60",
+    NCF=b"x66",
+    BIO=b"x6B",
+    DVR=b"x6D",
+    # PRE=b'x6E',
+    HDV=b"x6F",
+    GES=b"x80",
+    GEA=b"x81",
+    GEO=b"x82",
+    GED=b"x83",
+    GEF=b"x84",
+    GEP=b"x85",
+    GEI=b"x86",
+    GEX=b"x87",
+    GEV=b"x89",
+    GEC=b"x8B",
+    GEK=b"x8C",
+    GEW=b"x8D",
+    WP=b"xA0",
+    GSB=b"xAB",
+    TDF=b"xAC",
+    BDF=b"xAD",
+    SRC=b"xB0",
+    OBJ=b"xB1",
+    LIB=b"xB2",
+    S16=b"xB3",
+    RTL=b"xB4",
+    EXE=b"xB5",
+    PIF=b"xB6",
+    TIF=b"xB7",
+    NDA=b"xB8",
+    CDA=b"xB9",
+    TOL=b"xBA",
+    DRV=b"xBB",
+    LDF=b"xBC",
+    FST=b"xBD",
+    DOC=b"xBF",
+    PNT=b"xC0",
+    PIC=b"xC1",
+    ANI=b"xC2",
+    PAL=b"xC3",
+    OOG=b"xC5",
+    SCR=b"xC6",
+    CDV=b"xC7",
+    FON=b"xC8",
+    FND=b"xC9",
+    ICN=b"xCA",
+    MUS=b"xD5",
+    INS=b"xD6",
+    MDI=b"xD7",
+    SND=b"xD8",
+    DBM=b"xDB",
+    LBR=b"xE0",
+    ATK=b"xE2",
+    R16=b"xEE",
+    PAR=b"xEF",
+    CMD=b"xF0",
+    OVL=b"xF1",
+    UD2=b"xF2",
+    UD3=b"xF3",
+    UD4=b"xF4",
+    BAT=b"xF5",
+    UD6=b"xF6",
+    UD7=b"xF7",
+    PRG=b"xF8",
+    P16=b"xF9",
+    INT=b"xFA",
+    IVR=b"xFB",
+    BAS=b"xFC",
+    VAR=b"xFD",
+    REL=b"xFE",
+    SYS=b"xFF",
+)
+
 
 class ProDOSFileObj(FileObj):
     def __init__(self, file_system: "FileSystem", name: str, parent: "DirObj") -> None:
         super().__init__(file_system, name, parent)
 
+    def _read_info(self):
+        pass
+
     def _read(self) -> None:
         self.data = bytearray()
+        self._synced = True
 
     def _write(self) -> None:
-        pass
+        self._synced = True
 
     def delete(self) -> None:
         pass
@@ -110,7 +239,7 @@ class ProDOSFileSystem(FileSystem):
 
     @property
     def root(self) -> "DirObj":
-        return DirObj(self, name=self.container.pathname)
+        return DirObj(self)
 
     def flush(self) -> None:
         pass
@@ -120,6 +249,17 @@ class ProDOSFileSystem(FileSystem):
 
     def info(self) -> str:
         s = f"{self.type}\n"
-        s += f"Container={self.container.container_name}\n"
-        s += f"Path={self.root.fullpath}"
+        s += f"Container={self.container.container_name}"
         return s
+
+    def ext_to_filetype(self, ext: str) -> bytes:
+        if ext.startswith("pd_"):
+            t = int(ext[2:])
+            return bytes(t)
+        return ProDOSFiletypesMap.get(ext, ProDOSFiletypesMap["BIN"])
+
+    def filetype_to_ext(self, ftype: bytes) -> str:
+        for key, value in ProDOSFiletypesMap.items():
+            if value == ftype[0]:
+                return key
+        return f"pd_{int(ftype[0]):03d}"

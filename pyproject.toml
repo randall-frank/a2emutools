@@ -9,10 +9,10 @@ description = "Tools for manipulating Apple 2 emulator disk files"
 authors = [ { name = "Randall Frank", email = "frogboots.000@gmail.com" } ]
 maintainers  = [ { name = "Randall Frank", email = "frogboots.000@gmail.com" } ]
 requires-python = ">=3.10"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -48,11 +48,6 @@ doc = [
     "sphinx-copybutton==0.5.2",
     "requests>=2.28.2",
 ]
-
-[tool.codespell]
-ignore-words-list = "a2e, dsk, 2mg, a2emutools"
-quiet-level = 3
-skip = "*.pyc,*.xml,*.gif,*.png,*.jpg,*.js,*.html,*.svg"
 
 [tool.isort]
 profile = "black"

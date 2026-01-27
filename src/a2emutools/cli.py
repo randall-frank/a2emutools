@@ -30,7 +30,7 @@ Where XX is the filetype code in hex and YYYY is the file's "auxflags" value in 
 
 Commands:
 
-    ls container [--prefix pfx] [--full] [--json] [--recurse]
+    ls container [--prefix pfx] [--full] [--recurse]
     rm container name [name] [--prefix pfx] [--recurse]
     create container [--size size] [--bootable]
     mkdir container name [--prefix pfx] [--recurse]
@@ -68,9 +68,6 @@ def run() -> None:
     ls_parser.add_argument("container", help="Disk image container name", default=None)
     ls_parser.add_argument(
         "--prefix", type=str, default="/", help="Filepath prefix within the container"
-    )
-    ls_parser.add_argument(
-        "--json", action="store_true", default=False, help="Encode output in json"
     )
     ls_parser.add_argument(
         "--full", action="store_true", default=False, help="Include file details"
@@ -201,9 +198,7 @@ def run() -> None:
     elif args.cmd == "rm":
         cmd_rm.cmd_rm(args.container, args.prefix, args.names, recurse=args.recurse)
     elif args.cmd == "ls":
-        cmd_ls.cmd_ls(
-            args.container, args.prefix, full=args.full, json=args.json, recurse=args.recurse
-        )
+        cmd_ls.cmd_ls(args.container, args.prefix, full=args.full, recurse=args.recurse)
 
     log.info("Command complete")
 

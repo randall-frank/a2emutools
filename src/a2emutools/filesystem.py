@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import IntEnum
 import os.path
 import stat
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from a2emutools.container_formats import DiskImage
 
@@ -28,6 +28,9 @@ class DirObj:
         self._create_time: "datetime" = datetime.now()
         self._mod_time: "datetime" = datetime.now()
 
+    def setup(self, **kwargs) -> None:
+        pass
+
     @property
     def file_system(self) -> "FileSystem":
         return self._fs
@@ -44,11 +47,18 @@ class DirObj:
             if not p.name:
                 return s
             s = f"/{p.name}{s}"
+            p = p.parent
         return s
 
     @property
     def name(self) -> str:
         return self._name
+
+    @name.setter
+    def name(self, name: Any) -> None:
+        if type(name) is not str:
+            self._name = name.decode("ascii")
+        self._name.strip("\0")
 
     def create_file(self, name: str, filetype: str) -> Optional["FileObj"]:
         return None
@@ -85,7 +95,7 @@ class FileObj:
         self._data: bytearray = bytearray()
         self._synced: bool = False
 
-    def _read_info(self):
+    def setup(self, **kwargs) -> None:
         path = self._fs._local_pathname(self.path)
         if os.path.isfile(path):
             s = os.stat(path)
@@ -93,12 +103,12 @@ class FileObj:
             self._file_type = os.path.splitext(path)[1][1:].upper()
             self._mod_time = datetime.fromtimestamp(s.st_mtime)
             self._create_time = datetime.fromtimestamp(s.st_ctime)
-            a = Access.CORE
+            a = int(Access.CORE)
             if stat.S_IRUSR & s.st_mode:
                 a |= Access.READ
             if stat.S_IWUSR & s.st_mode:
                 a |= Access.WRITE
-            self._access = a
+            self._access = Access(a)
 
     @property
     def file_system(self) -> "FileSystem":
@@ -116,11 +126,18 @@ class FileObj:
             if not p.name:
                 return s
             s = f"/{p.name}{s}"
+            p = p.parent
         return s
 
     @property
     def name(self) -> str:
         return self._name
+
+    @name.setter
+    def name(self, name: Any) -> None:
+        if type(name) is not str:
+            self._name = name.decode("ascii")
+        self._name.strip("\0")
 
     @property
     def file_type(self) -> str:
@@ -205,6 +222,8 @@ class FileSystem:
     def __init__(self, container: "DiskImage") -> None:
         self._type: str = "Local Filesystem"
         self._container: "DiskImage" = container
+        self._volume_name: str = ""
+        self._bitmap: bytearray = bytearray()
 
     @property
     def container(self) -> "DiskImage":
@@ -218,7 +237,17 @@ class FileSystem:
     def root(self) -> "DirObj":
         return DirObj(self)
 
-    def find_entity(self, name: str) -> Union["DirObj", "FileObj", None]:
+    @property
+    def volume_name(self) -> str:
+        return self._volume_name
+
+    @property
+    def bitmap(self) -> bytearray:
+        return self._bitmap
+
+    def find_entity(
+        self, name: str, parent: Optional["DirObj"] = None
+    ) -> Union["DirObj", "FileObj", None]:
         """
         Walk the files and directories of the filesystem and return the DirObj, FileObj
         instances corresponding to the specified name.   If the name cannot be found,
@@ -229,28 +258,26 @@ class FileSystem:
         name: str
             The pathname of the object to find.  The '/' character serves as the name deliminator.
 
+        parent: DirObj, optional
+            The directory object to start the search from.  If None, the search starts
+            from the root of the filesystem.
         Returns
         -------
         The object found or None
 
         """
-        cur_obj = self.root
-        stack = name.split("/")
-        while len(stack):
-            cur_name = stack.pop(0)
-            if not cur_name:
-                continue
-            children = cur_obj.children()
-            found = False
-            for child in children:
-                if child.name == cur_name:
-                    found = True
-                    cur_obj = child  # type: ignore
-                    if len(stack) == 0:
-                        return cur_obj
-                    break
-            if not found:
-                return None
+        cur_obj = parent
+        if not cur_obj:
+            cur_obj = self.root
+        while cur_obj:
+            if cur_obj.path == name:
+                return cur_obj
+            for child in cur_obj.children():
+                if isinstance(child, FileObj):
+                    continue
+                found = self.find_entity(name, parent=child)
+                if found:
+                    return found
         return None
 
     def flush(self) -> None:
@@ -259,18 +286,23 @@ class FileSystem:
     def initialize(self) -> None:
         pass
 
-    def info(self) -> str:
+    def info(self, vtoc: bool = False) -> str:
         """
         This method returns the string that is displayed by the 'info' cli command.
         It should report on the nature of the container: size, type, VTOC, etc
+
+        Parameters
+        ----------
+        vtoc: bool
+            If True, include block/sector allocation info where applicable
 
         Returns
         -------
         str
             The output to be displayed.
         """
-        s = f"{self.type}\n"
-        s += f"Container={self.container.container_name}"
+        s = f"Container: {self.container.container_name}\n"
+        s += f"Filesystem: {self.type}"
         return s
 
     def _local_pathname(self, pathname: str) -> str:

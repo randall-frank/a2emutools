@@ -58,7 +58,7 @@ class DirObj:
     def name(self, name: Any) -> None:
         if type(name) is not str:
             self._name = name.decode("ascii")
-        self._name.strip("\0")
+        self._name = self._name.rstrip("\0").rstrip(" ")
 
     def create_file(self, name: str, filetype: str) -> Optional["FileObj"]:
         return None
@@ -79,6 +79,15 @@ class DirObj:
 
     def delete(self):
         print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
+
+    def info(self, full: bool = False) -> str:
+        s = f"{self.path}/"
+        if full:
+            s += (
+                f' Create: {self._create_time.strftime("%Y-%m-%d %H:%M:%S")} '
+                f'Mod: {self._mod_time.strftime("%Y-%m-%d %H:%M:%S")}'
+            )
+        return s
 
 
 class FileObj:
@@ -137,7 +146,7 @@ class FileObj:
     def name(self, name: Any) -> None:
         if type(name) is not str:
             self._name = name.decode("ascii")
-        self._name.strip("\0")
+        self._name = self._name.rstrip("\0").rstrip(" ")
 
     @property
     def file_type(self) -> str:
@@ -197,6 +206,16 @@ class FileObj:
 
     def delete(self) -> None:
         print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
+
+    def info(self, full: bool = False) -> str:
+        s = f"{self.path} {self.file_type} Size: {self.file_size} Aux: {self.aux_bits}"
+        if full:
+            s += (
+                f" Access: {self.access.name}"
+                f' Create: {self.create_time.strftime("%Y-%m-%d %H:%M:%S")}'
+                f' Mod: {self.mod_time.strftime("%Y-%m-%d %H:%M:%S")}'
+            )
+        return s
 
 
 class FileSystem:

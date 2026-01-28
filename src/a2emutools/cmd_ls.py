@@ -11,12 +11,12 @@ def _gen_text_entity(
 ) -> str:
     s = ""
     if isinstance(entity, filesystem.DirObj):
-        s += f"Directory: {entity.path}\n"
+        s += f"{entity.info(full=full)}\n"
         if recurse:
             for child in entity.children():
                 s += _gen_text_entity(child, full=full, recurse=recurse)
     else:
-        s += f"File: {entity.path} {entity.file_type}\n"
+        s += f"{entity.info(full=full)}\n"
     return s
 
 

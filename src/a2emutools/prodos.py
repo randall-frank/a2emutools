@@ -479,10 +479,10 @@ class ProDOSFileSystem(FileSystem):
 
     def info(self, vtoc: bool = False) -> str:
         s = super().info(vtoc=vtoc)
-        s += f"\nVolume Name: {self.volume_name}"
-        s += f"\nTotal Blocks: {self.num_blocks}"
+        s += f"\nVolume name: {self.volume_name}"
+        s += f"\nTotal blocks: {self.num_blocks}"
         if vtoc:
-            s += "\nBlock Allocation (*=used,.=free):\n"
+            s += "\nBlock allocation (*=used,.=free):\n"
             s += "      0000000000111111\n"
             s += "Blk#: 0123456789012345"
             for i in range(self.num_blocks):

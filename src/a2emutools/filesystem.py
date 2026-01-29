@@ -27,6 +27,7 @@ class DirObj:
         self._parent: Optional["DirObj"] = parent
         self._create_time: "datetime" = datetime.now()
         self._mod_time: "datetime" = datetime.now()
+        self._access: Access = Access.ALL
 
     def setup(self, **kwargs) -> None:
         pass
@@ -38,6 +39,10 @@ class DirObj:
     @property
     def parent(self) -> Optional["DirObj"]:
         return self._parent
+
+    @property
+    def access(self) -> Access:
+        return self._access
 
     @property
     def path(self) -> str:
@@ -80,13 +85,12 @@ class DirObj:
     def delete(self):
         print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
 
-    def info(self, full: bool = False) -> str:
+    def info(self) -> str:
         s = f"{self.path}/"
-        if full:
-            s += (
-                f' Create: {self._create_time.strftime("%Y-%m-%d %H:%M:%S")} '
-                f'Mod: {self._mod_time.strftime("%Y-%m-%d %H:%M:%S")}'
-            )
+        s += (
+            f" Create: {self._create_time.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"Mod: {self._mod_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         return s
 
 
@@ -207,14 +211,13 @@ class FileObj:
     def delete(self) -> None:
         print(f"Deleting: {self._fs._local_pathname(self.path)} unimplemented.")
 
-    def info(self, full: bool = False) -> str:
+    def info(self) -> str:
         s = f"{self.path} {self.file_type} Size: {self.file_size} Aux: {self.aux_bits}"
-        if full:
-            s += (
-                f" Access: {self.access.name}"
-                f' Create: {self.create_time.strftime("%Y-%m-%d %H:%M:%S")}'
-                f' Mod: {self.mod_time.strftime("%Y-%m-%d %H:%M:%S")}'
-            )
+        s += (
+            f" Access: {self.access.name}"
+            f" Create: {self.create_time.strftime('%Y-%m-%d %H:%M:%S')}"
+            f" Mod: {self.mod_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         return s
 
 

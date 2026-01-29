@@ -62,6 +62,15 @@ class DOS33FileObj(FileObj):
     def delete(self) -> None:
         pass
 
+    def info(self) -> str:
+        s = " "
+        if not (self.access & Access.WRITE):
+            s = "*"
+        s += f"{self.name:31}"
+        s += f"{self.file_type:5}"
+        s += f" {self.file_size:03d}"
+        return s
+
 
 class DOS33DirObj(DirObj):
     def __init__(

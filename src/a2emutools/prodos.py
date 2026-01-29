@@ -193,6 +193,17 @@ class ProDOSFileObj(FileObj):
     def delete(self) -> None:
         pass
 
+    def info(self) -> str:
+        s = " "
+        if not (self.access & Access.WRITE):
+            s = "*"
+        s += f"{self.path:65}"
+        s += f"{self.file_type:5}"
+        s += f"${self.aux_bits:04X}"
+        s += f" {self.file_size:7d}"
+        s += f" {self._mod_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return s
+
 
 class ProDOSDirObj(DirObj):
     def __init__(
@@ -231,6 +242,7 @@ class ProDOSDirObj(DirObj):
             if prodos_version != 0:
                 raise RuntimeError(f"Invalid ProDOS volume header: {tmp[6]}.")
             # tmp[7] = ACCESS
+            self._access = ProDOSFileSystem.access_to_enum(int(tmp[7]))
             # tmp[8] = ENTRY_LENGTH = $27
             if int(tmp[8]) != 0x27:
                 raise RuntimeError(f"Invalid ProDOS entry length: {tmp[8]}.")
@@ -316,6 +328,16 @@ class ProDOSDirObj(DirObj):
 
     def delete(self):
         pass
+
+    def info(self) -> str:
+        s = " "
+        if not (self.access & Access.WRITE):
+            s = "*"
+        s += f"{self.path+'/':65}"
+        s += f"{'DIR':5}"
+        s += "              "
+        s += f"{self._mod_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        return s
 
 
 class ProDOSFileSystem(FileSystem):

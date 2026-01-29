@@ -482,6 +482,60 @@ class ProDOSFileSystem(FileSystem):
                 raw_block = self.container.read_block(blocknum)
                 idx = 0
 
+    def _write_block_bitmap(self) -> None:
+        """Write the block allocation bitmap to the container."""
+        blocknum = self._bitmap_start
+        raw_block = bytearray(512)
+        idx = 0
+        for i in range(self._num_blocks):
+            byte_idx = idx // 8
+            bit_idx = idx % 8
+            if self._bitmap[i]:
+                raw_block[byte_idx] |= 1 << bit_idx
+            else:
+                raw_block[byte_idx] &= ~(1 << bit_idx)
+            idx += 1
+            if idx == 512:  # write next block
+                self.container.write_block(blocknum, raw_block)
+                blocknum += 1
+                raw_block = bytearray(512)
+                idx = 0
+
+    def _alloc_blocks(self, num: int) -> List[int]:
+        """Allocate blocks on the filesystem.
+        Parameters
+        ----------
+        num : int
+            The number of blocks to allocate.
+
+        Returns
+        -------
+        List[int]
+            A list of allocated block numbers.
+        """
+        if num > self._bitmap.count(0):
+            raise RuntimeError("Not enough free blocks available.")
+        allocated: List[int] = []
+        for i in range(self._num_blocks):
+            if self._bitmap[i] == 0:
+                self._bitmap[i] = 1
+                allocated.append(i)
+            if len(allocated) == num:
+                break
+        return allocated
+
+    def _free_blocks(self, blocks: List[int]) -> None:
+        """Free blocks on the filesystem.
+        Parameters
+        ----------
+        blocks : List[int]
+            A list of block numbers to free.
+        """
+        for b in blocks:
+            if b < 0 or b >= self._num_blocks:
+                raise RuntimeError(f"Invalid block number to free: {b}.")
+            self._bitmap[b] = 0
+
     @property
     def num_blocks(self) -> int:
         return self._num_blocks

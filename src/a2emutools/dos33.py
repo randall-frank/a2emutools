@@ -201,10 +201,10 @@ class DOS33FileSystem(FileSystem):
         self._cat_track: int = info["cat_track"]
         self._cat_sector: int = info["cat_sector"]
         self._bitmap = bytearray(self.num_tracks * self.num_sectors)  # one byte per sector
-        self._read_block_bitmap()
+        self._read_sector_bitmap()
         self._root: Optional[DOS33DirObj] = None
 
-    def _read_block_bitmap(self) -> None:
+    def _read_sector_bitmap(self) -> None:
         """Fill the block allocation bitmap from the container."""
         # Read the DOS 3.3 VTOC from track 17, sector 0.
         # for a given sector, (offset, mask) of the bitmap byte
@@ -236,6 +236,76 @@ class DOS33FileSystem(FileSystem):
                     self._bitmap[i * self._num_sectors + j] = 1
                 else:
                     self._bitmap[i * self._num_sectors + j] = 0
+
+    def _write_sector_bitmap(self) -> None:
+        """Write the block allocation bitmap back to the container."""
+        sec_map = [
+            (1, 0x01),
+            (1, 0x02),
+            (1, 0x04),
+            (1, 0x08),
+            (1, 0x10),
+            (1, 0x20),
+            (1, 0x40),
+            (1, 0x80),
+            (0, 0x01),
+            (0, 0x02),
+            (0, 0x04),
+            (0, 0x08),
+            (0, 0x10),
+            (0, 0x20),
+            (0, 0x40),
+            (0, 0x80),
+        ]
+        raw_sector = self.container.read_sector(0x11, 0x00)
+        for i in range(self.num_tracks):
+            for j in range(self._num_sectors):
+                (sector_offset, mask) = sec_map[j]
+                offset = 0x38 + i * 4 + sector_offset
+                index = i * self._num_sectors + j
+                if self._bitmap[index]:
+                    raw_sector[offset] |= mask
+                else:
+                    raw_sector[offset] &= ~mask
+        self.container.write_sector(0x11, 0x00, raw_sector)
+
+    def _allocate_sectors(self, num: int) -> List[Tuple[int, int]]:
+        """Allocate sectors on the disk.
+
+        Parameters
+        ----------
+        num : int
+            The number of sectors to allocate.
+
+        Returns
+        -------
+        List[Tuple[int, int]]
+            A list of (track, sector) tuples for the allocated sectors.
+        """
+        if num > self._bitmap.count(0):
+            raise RuntimeError("Not enough free sectors available.")
+        allocated: List[Tuple[int, int]] = []
+        for i in range(self.num_tracks * self.num_sectors):
+            if self._bitmap[i] == 0:
+                track = i // self.num_sectors
+                sector = i % self.num_sectors
+                self._bitmap[i] = 1
+                allocated.append((track, sector))
+            if len(allocated) == num:
+                break
+        return allocated
+
+    def _free_sectors(self, sectors: List[Tuple[int, int]]) -> None:
+        """Free previously allocated sectors.
+
+        Parameters
+        ----------
+        sectors : List[Tuple[int, int]]
+            A list of (track, sector) tuples to free.
+        """
+        for track, sector in sectors:
+            index = track * self.num_sectors + sector
+            self._bitmap[index] = 0
 
     @property
     def num_tracks(self) -> int:

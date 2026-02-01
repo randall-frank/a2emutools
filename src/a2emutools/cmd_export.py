@@ -1,6 +1,6 @@
 import logging
 import os.path
-from typing import List
+from typing import List, Optional
 
 from a2emutools.detokenizer import detokenize
 
@@ -14,7 +14,7 @@ def cmd_export(
     prefix: str,
     names: List[str],
     tokenize: bool = False,
-    force_type: str = "",
+    add_ext: Optional[str] = None,
     target_dir: str = ".",
     convert_eol: bool = False,
     naps: bool = False,
@@ -34,6 +34,13 @@ def cmd_export(
             if naps:
                 name = entity.naps_name
             out_path = os.path.join(target_dir, name)
+            if add_ext is not None:
+                # if specified, use the provided extension when naming output files
+                # if an empty string is provided, add the container file type as the extension
+                if len(add_ext) > 0:
+                    out_path += add_ext
+                else:
+                    out_path += f".{entity.file_type}"
             if tokenize and (entity.file_type in ["BAS"]):
                 s = detokenize(data)
                 with open(out_path, "w") as f:

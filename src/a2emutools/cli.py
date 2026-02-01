@@ -165,10 +165,11 @@ def run() -> None:
         help="Convert newline to carriage return on export",
     )
     export_parser.add_argument(
-        "--force_type",
+        "--add_ext",
         type=str,
-        default="",
-        help="Override the natural input file type to use provided type instead",
+        default=argparse.SUPPRESS,
+        nargs="?",
+        help="Extension to add to exported files (e.g. .txt, .bas)",
     )
     export_parser.add_argument(
         "--naps",
@@ -208,12 +209,17 @@ def run() -> None:
             convert_eol=args.convert_eol,
         )
     elif args.cmd == "export":
+        ext = None
+        if "add_ext" in args:
+            ext = args.add_ext
+            if ext is None:
+                ext = ""
         cmd_export.cmd_export(
             args.container,
             args.prefix,
             args.names,
             tokenize=args.tokenize,
-            force_type=args.force_type,
+            add_ext=ext,
             target_dir=args.dir,
             convert_eol=args.convert_eol,
             naps=args.naps,

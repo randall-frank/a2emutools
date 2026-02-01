@@ -24,7 +24,7 @@ def _gen_text_entity(
 def cmd_ls(cont_name: str, prefix: str, recurse: bool = False):
     container = container_formats.create_image(cont_name)
     fs = container.filesystem
-    root = fs.find_entity(prefix)
+    root = fs.find_entity(prefix, dir_only=True)
     if root is None:
         log.error(f"Unable to find '{prefix}' in the container '{container.container_name}'")
         sys.exit(1)

@@ -135,9 +135,8 @@ def detokenize(data: bytes) -> str:
 
     output = ""
 
-    # Check for 2-byte load address header (common in Apple II files)
-    # Typically $01 $08 for $0801. We skip it to get to the program start.
-    offset = 2
+    # we assume the 16bit length has been stripped from the data already
+    offset = 0
 
     while offset < len(data):
         # 1. Read Link Pointer (2 bytes)

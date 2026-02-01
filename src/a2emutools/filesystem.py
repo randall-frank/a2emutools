@@ -107,6 +107,35 @@ class FileObj:
         self._access: Access = Access.ALL
         self._data: bytearray = bytearray()
         self._synced: bool = False
+        self.handle_naps_name()
+
+    def handle_naps_name(self) -> None:
+        """parse NAPS style filename if present
+        If the filename ends with #XXYYYY where XX is the filetype in hex
+        and YYYY is the aux bits in hex, parse them out and set the appropriate
+        attributes, shortening the name accordingly.
+        """
+        if "#" not in self._name:
+            return
+        parts = self._name.rsplit("#", 1)
+        if len(parts) == 2 and len(parts[1]) == 6:
+            try:
+                ext = int(parts[1][:2], 16)
+                self._file_type = self._fs.filetype_to_ext(ext)
+            except ValueError:
+                # if the filetype is invalid, then the NAPS is invalid; ignore it
+                return
+            try:
+                self._aux_bits = int(parts[1][2:6], 16)
+            except ValueError:
+                # if the aux field is invalid, then the NAPS is invalid; ignore it
+                return
+            self._name = parts[0]
+
+    @property
+    def naps_name(self) -> str:
+        num = self._fs.ext_to_filetype(self.file_type)
+        return f"{self.name}#{num[0]:02X}{self.aux_bits:04X}"
 
     def setup(self, **kwargs) -> None:
         path = self._fs._local_pathname(self.path)
@@ -268,7 +297,7 @@ class FileSystem:
         return self._bitmap
 
     def find_entity(
-        self, name: str, parent: Optional["DirObj"] = None
+        self, name: str, parent: Optional["DirObj"] = None, dir_only: bool = False
     ) -> Union["DirObj", "FileObj", None]:
         """
         Walk the files and directories of the filesystem and return the DirObj, FileObj
@@ -283,6 +312,10 @@ class FileSystem:
         parent: DirObj, optional
             The directory object to start the search from.  If None, the search starts
             from the root of the filesystem.
+
+        dir_only: bool
+            If True, only return directory objects; skip files.
+
         Returns
         -------
         The object found or None
@@ -295,6 +328,9 @@ class FileSystem:
             return cur_obj
         for child in cur_obj.children():
             if isinstance(child, FileObj):
+                if not dir_only:
+                    if child.path == name:
+                        return child
                 continue
             found = self.find_entity(name, parent=child)
             if found:
@@ -306,6 +342,12 @@ class FileSystem:
 
     def initialize(self) -> None:
         pass
+
+    def ext_to_filetype(self, ext: str) -> bytes:
+        raise NotImplementedError("Subclasses must implement ext_to_filetype method.")
+
+    def filetype_to_ext(self, ftype: int) -> str:
+        raise NotImplementedError("Subclasses must implement filetype_to_ext method.")
 
     def info(self, vtoc: bool = False) -> str:
         """

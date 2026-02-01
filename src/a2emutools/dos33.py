@@ -51,10 +51,10 @@ class DOS33FileObj(FileObj):
         if filetype & 0x80:
             flags = Access.READ
         self._access = Access(flags)
-        self._file_type = DOS33FileSystem.filetype_to_ext(filetype & 0x7F)
+        self._file_type = self._fs.filetype_to_ext(filetype & 0x7F)
 
     def _read(self) -> None:
-        self.data = bytearray()
+        self._data = bytearray()
         # read the track/sector list
         ts_sector = self._fs.container.read_sector(self._ts_list_track, self._ts_list_sector)
         next_ts_track = ts_sector[1]
@@ -71,7 +71,7 @@ class DOS33FileObj(FileObj):
                 index = raw_data.find(0)
                 if index != -1:
                     # no EOF, copy entire sector
-                    self.data += raw_data
+                    self._data += raw_data
                     # next sector
                     sector_index += 1
                     # wrap to next track/sector list if needed
@@ -87,8 +87,8 @@ class DOS33FileObj(FileObj):
                     )
                 else:
                     # EOF found, copy up to EOF and stop
-                    self.data += raw_data[:index]
-                    self._file_size = len(self.data)
+                    self._data += raw_data[:index]
+                    self._file_size = len(self._data)
                     self._aux_bits = 0
                     break
         # B = starts with load address and file length (16-bit numbers), then raw data
@@ -99,12 +99,12 @@ class DOS33FileObj(FileObj):
             if self.file_type == "BIN":
                 self._aux_bits = raw_data[0] + (raw_data[1] << 8)
                 self._file_size = raw_data[2] + (raw_data[3] << 8)
-                self.data = raw_data[4:]
+                self._data = raw_data[4:]
             else:
                 self._aux_bits = 0
                 self._file_size = raw_data[0] + (raw_data[1] << 8)
-                self.data = raw_data[2:]
-            while len(self.data) < self._file_size:
+                self._data = raw_data[2:]
+            while len(self._data) < self._file_size:
                 # next sector
                 sector_index += 1
                 # wrap to next track/sector list if needed
@@ -118,8 +118,8 @@ class DOS33FileObj(FileObj):
                 raw_data = self._fs.container.read_sector(
                     ts_sector[0x0C + sector_index * 2], ts_sector[0x0C + sector_index * 2 + 1]
                 )
-                self.data += raw_data
-            self.data = self.data[: self._file_size]
+                self._data += raw_data
+            self._data = self._data[: self._file_size]
         else:
             raise RuntimeError(f"Unsupported DOS 3.3 file type: {self.file_type}")
         self._synced = True
@@ -416,6 +416,9 @@ class DOS33FileSystem(FileSystem):
         s += f"\nVolume number: {self.volume_number}"
         s += f"\nTotal tracks: {self.num_tracks}"
         s += f"\nSectors per track: {self.num_sectors}"
+        s += f"\nTotal sectors: {self.num_tracks * self.num_sectors}"
+        s += f"\nUsed sectors: {self._bitmap.count(1)}"
+        s += f"\nFree sectors: {self._bitmap.count(0)}"
         if vtoc:
             s += "\nSector allocation (*=used,.=free):\n"
             s += "      0000000000111111\n"
@@ -437,15 +440,13 @@ class DOS33FileSystem(FileSystem):
         s = "-----------------------------------------"
         return s
 
-    @staticmethod
-    def ext_to_filetype(ext: str) -> bytes:
+    def ext_to_filetype(self, ext: str) -> bytes:
         if ext.startswith("d3_"):
             t = int(ext[2:])
             return bytes(t)
         return DOS33FiletypesMap.get(ext, DOS33FiletypesMap["BIN"])
 
-    @staticmethod
-    def filetype_to_ext(ftype: int) -> str:
+    def filetype_to_ext(self, ftype: int) -> str:
         for key, value in DOS33FiletypesMap.items():
             if int(value[0]) == ftype:
                 return key

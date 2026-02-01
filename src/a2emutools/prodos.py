@@ -163,7 +163,7 @@ class ProDOSFileObj(FileObj):
         # tmp[1] = FILE_NAME (15 bytes)
         self.name = tmp[1]
         # tmp[2] = FILE_TYPE (1 byte)
-        self._file_type = ProDOSFileSystem.filetype_to_ext(tmp[2])
+        self._file_type = self._fs.filetype_to_ext(tmp[2])
         # tmp[3] = KEY_POINTER (2 bytes)
         self._key_pointer = int(tmp[3])
         # tmp[4] = BLOCKS_USED (2 bytes)
@@ -189,10 +189,10 @@ class ProDOSFileObj(FileObj):
         """called to fill the file data from the filesystem"""
         # Three types of file storage: Seedling, Sapling, Tree
         master_index_block = self._fs.container.read_block(self._key_pointer)
-        self.data = bytearray(self._file_size)
+        self._data = bytearray(self._file_size)
         if self._file_storage == ProDOSFileType.SEEDLING:
             # data is in the index block directly
-            self.data = master_index_block[: self._file_size]
+            self._data = master_index_block[: self._file_size]
         elif self._file_storage == ProDOSFileType.SAPLING:
             # data is in blocks pointed to by the index block
             # 256 LSBs followed by 256 MSBs
@@ -204,7 +204,7 @@ class ProDOSFileObj(FileObj):
                 end = offset + 512
                 if end > self._file_size:
                     end = self._file_size
-                self.data[offset:end] = raw_block[: end - offset]
+                self._data[offset:end] = raw_block[: end - offset]
                 # next block
                 idx += 1
         elif self._file_storage == ProDOSFileType.TREE:
@@ -222,7 +222,7 @@ class ProDOSFileObj(FileObj):
                 end = offset + 512
                 if end > self._file_size:
                     end = self._file_size
-                self.data[offset:end] = raw_block[: end - offset]
+                self._data[offset:end] = raw_block[: end - offset]
                 # next block
                 idx += 1
                 if idx >= 256:
@@ -605,6 +605,8 @@ class ProDOSFileSystem(FileSystem):
         s = super().info(vtoc=vtoc)
         s += f"\nVolume name: {self.volume_name}"
         s += f"\nTotal blocks: {self.num_blocks}"
+        s += f"\nUsed blocks: {self._bitmap.count(1)}"
+        s += f"\nFree blocks: {self._bitmap.count(0)}"
         if vtoc:
             s += "\nBlock allocation (*=used,.=free):\n"
             s += "      0000000000111111\n"
@@ -628,15 +630,13 @@ class ProDOSFileSystem(FileSystem):
         s += f"Total blocks: {total}, Used: {used}, Free: {free}"
         return s
 
-    @staticmethod
-    def ext_to_filetype(ext: str) -> bytes:
+    def ext_to_filetype(self, ext: str) -> bytes:
         if ext.startswith("pd_"):
             t = int(ext[2:])
             return bytes(t)
         return ProDOSFiletypesMap.get(ext, ProDOSFiletypesMap["BIN"])
 
-    @staticmethod
-    def filetype_to_ext(ftype: int) -> str:
+    def filetype_to_ext(self, ftype: int) -> str:
         for key, value in ProDOSFiletypesMap.items():
             if int(value[0]) == ftype:
                 return key

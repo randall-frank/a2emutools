@@ -118,11 +118,21 @@ def run() -> None:
         "--prefix", type=str, default="/", help="Filepath prefix within the container"
     )
     import_parser.add_argument(
+        "--dir", type=str, default=".", help="Import directory on local filesystem Default: ."
+    )
+    import_parser.add_argument(
         "--tokenize",
         dest="tokenize",
         action="store_true",
         default=False,
         help="Apply tokenization to imported files (useful for Applesoft basic files)",
+    )
+    import_parser.add_argument(
+        "--convert_eol",
+        dest="convert_eol",
+        action="store_true",
+        default=False,
+        help="Convert newline to carriage return on import",
     )
     import_parser.add_argument(
         "--force_type",
@@ -138,6 +148,9 @@ def run() -> None:
         "--prefix", type=str, default="/", help="Filepath prefix within the container"
     )
     export_parser.add_argument(
+        "--dir", type=str, default=".", help="Export directory on local filesystem Default: ."
+    )
+    export_parser.add_argument(
         "--tokenize",
         dest="tokenize",
         action="store_true",
@@ -145,15 +158,27 @@ def run() -> None:
         help="Apply detokenization to exported files (useful for Applesoft basic files",
     )
     export_parser.add_argument(
+        "--convert_eol",
+        dest="convert_eol",
+        action="store_true",
+        default=False,
+        help="Convert newline to carriage return on export",
+    )
+    export_parser.add_argument(
         "--force_type",
         type=str,
         default="",
         help="Override the natural input file type to use provided type instead",
     )
-
-    info_parser = cmd_parsers.add_parser(
-        "info", help="Return detailed container/filesystem information"
+    export_parser.add_argument(
+        "--naps",
+        dest="naps",
+        action="store_true",
+        default=False,
+        help="Use NAPS file naming convention to preserve file type and aux values",
     )
+
+    info_parser = cmd_parsers.add_parser("info", help="Return container/filesystem information")
     info_parser.add_argument("container", help="Disk image container name", default=None)
     info_parser.add_argument(
         "--vtoc", action="store_true", default=False, help="Include block/sector allocation info"
@@ -179,6 +204,8 @@ def run() -> None:
             args.names,
             tokenize=args.tokenize,
             force_type=args.force_type,
+            target_dir=args.dir,
+            convert_eol=args.convert_eol,
         )
     elif args.cmd == "export":
         cmd_export.cmd_export(
@@ -187,6 +214,9 @@ def run() -> None:
             args.names,
             tokenize=args.tokenize,
             force_type=args.force_type,
+            target_dir=args.dir,
+            convert_eol=args.convert_eol,
+            naps=args.naps,
         )
     elif args.cmd == "create":
         cmd_create.cmd_create(args.container, bootable=args.bootable, size=args.size)

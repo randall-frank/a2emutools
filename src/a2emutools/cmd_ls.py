@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import Union
 
 from . import container_formats, filesystem  # noqa: F401
@@ -24,9 +25,11 @@ def cmd_ls(cont_name: str, prefix: str, recurse: bool = False):
     container = container_formats.create_image(cont_name)
     fs = container.filesystem
     root = fs.find_entity(prefix)
-    if not root:
+    if root is None:
         log.error(f"Unable to find '{prefix}' in the container '{container.container_name}'")
-    s = f"Prefix: {prefix}\n"
+        sys.exit(1)
+    s = fs.ls_info_header(prefix=prefix)
     for entity in root.children():
         s += _gen_text_entity(entity, recurse=recurse)
+    s += fs.ls_info_footer(prefix=prefix)
     print(s)

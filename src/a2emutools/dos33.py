@@ -17,8 +17,9 @@ DOS33FiletypesMap = dict(
 
 
 class DOS33FileObj(FileObj):
-    def __init__(self, file_system: "FileSystem", name: str, parent: "DirObj") -> None:
+    def __init__(self, file_system: "DOS33FileSystem", name: str, parent: "DirObj") -> None:
         super().__init__(file_system, name, parent)
+        self._dfs = file_system
         # where is the file in the catalog
         self._parent_track: int = 0
         self._parent_sector: int = 0
@@ -54,6 +55,73 @@ class DOS33FileObj(FileObj):
 
     def _read(self) -> None:
         self.data = bytearray()
+        # read the track/sector list
+        ts_sector = self._fs.container.read_sector(self._ts_list_track, self._ts_list_sector)
+        next_ts_track = ts_sector[1]
+        next_ts_sector = ts_sector[2]
+        # start with the first few bytes
+        sector_index = 0
+        raw_data = self._fs.container.read_sector(
+            ts_sector[0x0C + sector_index * 2], ts_sector[0x0C + sector_index * 2 + 1]
+        )
+        # Reading file formats are very different
+        # T = read sectors until EOF (00)
+        if self.file_type == "TXT":
+            while True:
+                index = raw_data.find(0)
+                if index != -1:
+                    # no EOF, copy entire sector
+                    self.data += raw_data
+                    # next sector
+                    sector_index += 1
+                    # wrap to next track/sector list if needed
+                    if sector_index == self._dfs.max_ts_pairs:
+                        if next_ts_track == 0:
+                            break
+                        ts_sector = self._fs.container.read_sector(next_ts_track, next_ts_sector)
+                        next_ts_track = ts_sector[1]
+                        next_ts_sector = ts_sector[2]
+                        sector_index = 0
+                    raw_data = self._fs.container.read_sector(
+                        ts_sector[0x0C + sector_index * 2], ts_sector[0x0C + sector_index * 2 + 1]
+                    )
+                else:
+                    # EOF found, copy up to EOF and stop
+                    self.data += raw_data[:index]
+                    self._file_size = len(self.data)
+                    self._aux_bits = 0
+                    break
+        # B = starts with load address and file length (16 bit numbers), then raw data
+        # A = starts with file length (16 bit numbers), then encoded Applesoft BASIC
+        # I = same as A, but for Integer BASIC
+        elif self.file_type in ("BIN", "BAS", "INT"):
+            # basically the same, except that BIN has a 2-byte load address at the start
+            if self.file_type == "BIN":
+                self._aux_bits = raw_data[0] + (raw_data[1] << 8)
+                self._file_size = raw_data[2] + (raw_data[3] << 8)
+                self.data = raw_data[4:]
+            else:
+                self._aux_bits = 0
+                self._file_size = raw_data[0] + (raw_data[1] << 8)
+                self.data = raw_data[2:]
+            while len(self.data) < self._file_size:
+                # next sector
+                sector_index += 1
+                # wrap to next track/sector list if needed
+                if sector_index == self._dfs.max_ts_pairs:
+                    if next_ts_track == 0:
+                        break
+                    ts_sector = self._fs.container.read_sector(next_ts_track, next_ts_sector)
+                    next_ts_track = ts_sector[1]
+                    next_ts_sector = ts_sector[2]
+                    sector_index = 0
+                raw_data = self._fs.container.read_sector(
+                    ts_sector[0x0C + sector_index * 2], ts_sector[0x0C + sector_index * 2 + 1]
+                )
+                self.data += raw_data
+            self.data = self.data[: self._file_size]
+        else:
+            raise RuntimeError(f"Unsupported DOS 3.3 file type: {self.file_type}")
         self._synced = True
 
     def _write(self) -> None:
@@ -74,9 +142,10 @@ class DOS33FileObj(FileObj):
 
 class DOS33DirObj(DirObj):
     def __init__(
-        self, file_system: "FileSystem", name: str = "", parent: Optional["DirObj"] = None
+        self, file_system: "DOS33FileSystem", name: str = "", parent: Optional["DirObj"] = None
     ) -> None:
         super().__init__(file_system, name, parent)
+        self._dfs = file_system
         self._type: str = "DOS 3.3"
         self._children: List[Union["DirObj", "FileObj"]] = []
 
@@ -98,7 +167,7 @@ class DOS33DirObj(DirObj):
                     bytearray([b & 0x7F for b in tmp[3]]).decode("ascii").rstrip("\0").strip(" ")
                 )
                 file_length = int(tmp[4])
-                file_obj = DOS33FileObj(self._fs, file_name, self)
+                file_obj = DOS33FileObj(self._dfs, file_name, self)
                 parent_tsi = (track, sector, i)
                 file_obj.setup(
                     filetype=file_flags,
@@ -164,8 +233,8 @@ class DOS33FileSystem(FileSystem):
         info["volume_num"] = tmp[5]
         # tmp[6] = unused (32bytes)
         # tmp[7] = MAX_T/S_PAIRS (1byte)
-        max_ts_pairs = tmp[7]
-        if max_ts_pairs != 122:
+        info["max_ts_pairs"] = tmp[7]
+        if info["max_ts_pairs"] != 122:
             return info
         # tmp[8] = unused (8bytes)
         # tmp[9] = LAST_TRACK (1byte)
@@ -200,9 +269,14 @@ class DOS33FileSystem(FileSystem):
         self._num_sectors: int = info["num_sectors"]
         self._cat_track: int = info["cat_track"]
         self._cat_sector: int = info["cat_sector"]
+        self._max_ts_pairs = info["max_ts_pairs"]
         self._bitmap = bytearray(self.num_tracks * self.num_sectors)  # one byte per sector
         self._read_sector_bitmap()
         self._root: Optional[DOS33DirObj] = None
+
+    @property
+    def max_ts_pairs(self) -> int:
+        return self._max_ts_pairs
 
     def _read_sector_bitmap(self) -> None:
         """Fill the block allocation bitmap from the container."""

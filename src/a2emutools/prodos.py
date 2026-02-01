@@ -149,6 +149,7 @@ class ProDOSFileObj(FileObj):
     def __init__(self, file_system: "FileSystem", name: str, parent: "DirObj") -> None:
         super().__init__(file_system, name, parent)
         self._file_storage: ProDOSFileType = ProDOSFileType.SEEDLING
+        self._key_pointer: int = 0  # block number of key pointer
 
     def setup(self, block: int = 0, index: int = 0, **kwargs) -> None:
         """Initialize the file object from the file descriptive entry."""
@@ -164,6 +165,7 @@ class ProDOSFileObj(FileObj):
         # tmp[2] = FILE_TYPE (1 byte)
         self._file_type = ProDOSFileSystem.filetype_to_ext(tmp[2])
         # tmp[3] = KEY_POINTER (2 bytes)
+        self._key_pointer = int(tmp[3])
         # tmp[4] = BLOCKS_USED (2 bytes)
         # tmp[5] = EOF lo (1 byte)
         # tmp[6] = EOF mid (1 byte)
@@ -184,7 +186,53 @@ class ProDOSFileObj(FileObj):
         # tmp[16] = HEADER_POINTER
 
     def _read(self) -> None:
-        self.data = bytearray()
+        """called to fill the file data from the filesystem"""
+        # Three types of file storage: Seedling, Sapling, Tree
+        master_index_block = self._fs.container.read_block(self._key_pointer)
+        self.data = bytearray(self._file_size)
+        if self._file_storage == ProDOSFileType.SEEDLING:
+            # data is in the index block directly
+            self.data = master_index_block[: self._file_size]
+        elif self._file_storage == ProDOSFileType.SAPLING:
+            # data is in blocks pointed to by the index block
+            # 256 LSBs followed by 256 MSBs
+            # read the data, block by block
+            idx = 0
+            for offset in range(0, self._file_size, 512):
+                block_num = master_index_block[idx] | (master_index_block[idx + 256] << 8)
+                raw_block = self._fs.container.read_block(block_num)
+                end = offset + 512
+                if end > self._file_size:
+                    end = self._file_size
+                self.data[offset:end] = raw_block[: end - offset]
+                # next block
+                idx += 1
+        elif self._file_storage == ProDOSFileType.TREE:
+            # two tiers of indirection: master index block points to index blocks
+            master_idx = 0  # offset into master index block
+            # Read the first index_block
+            index_block_num = master_index_block[master_idx] | (
+                master_index_block[master_idx + 256] << 8
+            )
+            index_block = self._fs.container.read_block(index_block_num)
+            idx = 0  # offset into index block
+            for offset in range(0, self._file_size, 512):
+                block_num = index_block[idx] | (index_block[idx + 256] << 8)
+                raw_block = self._fs.container.read_block(block_num)
+                end = offset + 512
+                if end > self._file_size:
+                    end = self._file_size
+                self.data[offset:end] = raw_block[: end - offset]
+                # next block
+                idx += 1
+                if idx >= 256:
+                    # get next index block
+                    master_idx += 1
+                    index_block_num = master_index_block[master_idx] | (
+                        master_index_block[master_idx + 256] << 8
+                    )
+                    index_block = self._fs.container.read_block(index_block_num)
+                    idx = 0
         self._synced = True
 
     def _write(self) -> None:

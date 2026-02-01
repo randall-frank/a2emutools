@@ -291,15 +291,14 @@ class FileSystem:
         cur_obj = parent
         if not cur_obj:
             cur_obj = self.root
-        while cur_obj:
-            if cur_obj.path == name:
-                return cur_obj
-            for child in cur_obj.children():
-                if isinstance(child, FileObj):
-                    continue
-                found = self.find_entity(name, parent=child)
-                if found:
-                    return found
+        if cur_obj.path == name:
+            return cur_obj
+        for child in cur_obj.children():
+            if isinstance(child, FileObj):
+                continue
+            found = self.find_entity(name, parent=child)
+            if found:
+                return found
         return None
 
     def flush(self) -> None:
@@ -325,6 +324,15 @@ class FileSystem:
         """
         s = f"Container: {self.container.container_name}\n"
         s += f"Filesystem: {self.type}"
+        return s
+
+    def ls_info_header(self, prefix: str) -> str:
+        s = f"Listing for '{prefix}' in container '{self.container.container_name}':\n"
+        s += "-" * 60 + "\n"
+        return s
+
+    def ls_info_footer(self, prefix: str) -> str:
+        s = "-" * 60 + "\n"
         return s
 
     def _local_pathname(self, pathname: str) -> str:

@@ -182,7 +182,7 @@ class ProDOSFileObj(FileObj):
         self._aux_bits = int(tmp[13])
         # tmp[14] = MODIFICATION_DATE
         # tmp[15] = MODIFICATION_TIME
-        self._create_time = ProDOSFileSystem.timestamp_to_datetime(int(tmp[14]), int(tmp[15]))
+        self._mod_time = ProDOSFileSystem.timestamp_to_datetime(int(tmp[14]), int(tmp[15]))
         # tmp[16] = HEADER_POINTER
 
     def _read(self) -> None:
@@ -613,6 +613,19 @@ class ProDOSFileSystem(FileSystem):
                 if i % 16 == 0:
                     s += f"\n{ i:04d}: "
                 s += "." if self._bitmap[i] else "*"
+        return s
+
+    def ls_info_header(self, prefix: str) -> str:
+        s = f"Volume name: /{self.volume_name}  Listing prefix: {prefix}\n"
+        s += "-" * 104 + "\n"
+        return s
+
+    def ls_info_footer(self, prefix: str) -> str:
+        free = self._bitmap.count(0)
+        used = self._bitmap.count(1)
+        total = len(self._bitmap)
+        s = "-" * 104 + "\n"
+        s += f"Total blocks: {total}, Used: {used}, Free: {free}"
         return s
 
     @staticmethod

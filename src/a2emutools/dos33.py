@@ -91,8 +91,8 @@ class DOS33FileObj(FileObj):
                     self._file_size = len(self.data)
                     self._aux_bits = 0
                     break
-        # B = starts with load address and file length (16 bit numbers), then raw data
-        # A = starts with file length (16 bit numbers), then encoded Applesoft BASIC
+        # B = starts with load address and file length (16-bit numbers), then raw data
+        # A = starts with file length (16-bit numbers), then encoded Applesoft BASIC
         # I = same as A, but for Integer BASIC
         elif self.file_type in ("BIN", "BAS", "INT"):
             # basically the same, except that BIN has a 2-byte load address at the start
@@ -123,6 +123,11 @@ class DOS33FileObj(FileObj):
         else:
             raise RuntimeError(f"Unsupported DOS 3.3 file type: {self.file_type}")
         self._synced = True
+
+        # Notes: R format is not implemented (relocatable binary) but first 6 bytes are:
+        #   2 bytes load address - RAM image starting address
+        #   2 bytes exec address - RAM image length
+        #   2 bytes file length - length of file data following these 6 bytes
 
     def _write(self) -> None:
         self._synced = True
@@ -419,6 +424,17 @@ class DOS33FileSystem(FileSystem):
                 if i % self.num_sectors == 0:
                     s += f"\n{(i//self.num_sectors):04d}: "
                 s += "." if self._bitmap[i] else "*"
+        return s
+
+    def ls_info_header(self, prefix: str) -> str:
+        used = self._bitmap.count(1)
+        total = len(self._bitmap)
+        s = f"DOS 3.3 DISK Volume: {self.volume_number:03d} Used: {used:03d} of {total:03d}\n"
+        s += "-----------------------------------------\n"
+        return s
+
+    def ls_info_footer(self, prefix: str) -> str:
+        s = "-----------------------------------------"
         return s
 
     @staticmethod

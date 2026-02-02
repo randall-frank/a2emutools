@@ -477,7 +477,14 @@ class ProDOSFileSystem(FileSystem):
             year = 1900 + year
         hour = (date_time >> 8) & 0x001F
         minute = date_time & 0x003F
-        return datetime(year=year, month=month, day=day, hour=hour, minute=minute)
+        try:
+            dt = datetime(year=year, month=month, day=day, hour=hour, minute=minute)
+        except ValueError:
+            log.warning(
+                f"Invalid ProDOS date/time encountered: {year}-{month}-{day} {hour}:{minute}."
+            )
+            dt = datetime.now()
+        return dt
 
     @staticmethod
     def datetime_to_timestamp(date: "datetime") -> Tuple[int, int]:

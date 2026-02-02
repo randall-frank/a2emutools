@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import IntEnum
+from enum import IntFlag
 import os.path
 import stat
 from typing import Any, List, Optional, Union
@@ -7,7 +7,7 @@ from typing import Any, List, Optional, Union
 from a2emutools.container_formats import DiskImage
 
 
-class Access(IntEnum):
+class Access(IntFlag):
     # Notion of entities having access restrictions
     DELETE: int = 1 << 7
     RENAME: int = 1 << 6
